@@ -21,15 +21,21 @@ monochrome_theme = gr.themes.Base(
     button_secondary_border_color="*neutral_300"
 )
 
-def upload_file_fn(file):
-    if file is None:
+def upload_file_fn(file_list):
+    if not file_list:
         return "ファイルが選択されていません。", gr.update()
     
-    filename = os.path.basename(file.name)
-    with open(file.name, "rb") as f:
-        files = {"file": (filename, f)}
+    files_to_upload = []
+    file_objs = []
+    try:
+        for file in file_list:
+            filename = os.path.basename(file.name)
+            f = open(file.name, "rb")
+            file_objs.append(f)
+            files_to_upload.append(("file", (filename, f)))
+            
         try:
-            res = requests.post(f"{BACKEND_URL}/upload", files=files)
+            res = requests.post(f"{BACKEND_URL}/upload", files=files_to_upload)
             res_data = res.json()
             if res.status_code == 200:
                 history_list = res_data.get("history", [])
@@ -39,6 +45,9 @@ def upload_file_fn(file):
                 return f"エラー: {res_data.get('error')}", gr.update()
         except Exception as e:
             return f"バックエンドに接続できません: {str(e)}", gr.update()
+    finally:
+        for f in file_objs:
+            f.close()
 
 def refresh_history():
     try:
@@ -71,7 +80,7 @@ with gr.Blocks(theme=monochrome_theme, title="Gemma4 RAG System") as demo:
         # 左カラム: 資料管理・表示系
         with gr.Column(scale=1):
             gr.Markdown("### 📄 資料アップロード & 履歴")
-            file_input = gr.File(label="PDFまたはTXTファイルを選択", file_types=[".pdf", ".txt"])
+            file_input = gr.File(label="PDFまたはTXTファイルを選択", file_types=[".pdf", ".txt"], file_count="multiple")
             upload_btn = gr.Button("資料をシステムプロンプトに同期", variant="secondary")
             upload_status = gr.Textbox(label="アップロードステータス", interactive=False)
             

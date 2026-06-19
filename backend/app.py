@@ -24,31 +24,40 @@ def upload_file():
     if "file" not in request.files:
         return jsonify({"error": "ファイルがありません"}), 400
     
-    file = request.files["file"]
-    filename = file.filename
-    
-    if filename == "":
-        return jsonify({"error": "ファイル名が空です"}), 400
+    files = request.files.getlist("file")
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"error": "ファイルが選択されていません"}), 400
 
+    success_files = []
     try:
-        # 拡張子に応じてテキスト抽出
-        if filename.endswith(".txt"):
-            text = file.read().decode("utf-8", errors="ignore")
-        elif filename.endswith(".pdf"):
-            reader = PdfReader(file)
-            text = ""
-            for i, page in enumerate(reader.pages):
-                page_text = page.extract_text()
-                if page_text:
-                    # ハイライト参照用に、簡易的なページマーカーを埋め込む
-                    text += f"[PDF_PAGE_{i+1}]\n{page_text}\n"
-        else:
-            return jsonify({"error": "未対応のファイル形式です"}), 400
+        for file in files:
+            filename = file.filename
+            if filename == "":
+                continue
 
-        # メモリに保存（資料の更新・追記）
-        uploaded_documents[filename] = text
+            # 拡張子に応じてテキスト抽出
+            if filename.endswith(".txt"):
+                text = file.read().decode("utf-8", errors="ignore")
+            elif filename.endswith(".pdf"):
+                reader = PdfReader(file)
+                text = ""
+                for i, page in enumerate(reader.pages):
+                    page_text = page.extract_text()
+                    if page_text:
+                        # ハイライト参照用に、簡易的なページマーカーを埋め込む
+                        text += f"[PDF_PAGE_{i+1}]\n{page_text}\n"
+            else:
+                continue
+
+            # メモリに保存（資料の更新・追記）
+            uploaded_documents[filename] = text
+            success_files.append(filename)
+
+        if not success_files:
+            return jsonify({"error": "有効なファイルが読み込めませんでした"}), 400
+
         return jsonify({
-            "message": f"{filename} を読み込み、システムプロンプトを更新しました。",
+            "message": f"{len(success_files)}件のファイルを読み込み、システムプロンプトを更新しました。",
             "history": list(uploaded_documents.keys())
         })
 
