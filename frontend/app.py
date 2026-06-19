@@ -10,15 +10,17 @@ monochrome_theme = gr.themes.Base(
     secondary_hue="slate",
     neutral_hue="slate",
 ).set(
-    body_background_fill="*neutral_50",
-    block_background_fill="*white",
+    body_background_fill="#ffffff",
+    block_background_fill="#ffffff",
     block_border_width="1px",
     block_border_color="*neutral_200",
     button_primary_background_fill="*neutral_900",
-    button_primary_text_color="*white",
-    button_secondary_background_fill="*white",
-    button_secondary_text_color="*neutral_900",
-    button_secondary_border_color="*neutral_300"
+    button_primary_background_fill_hover="*neutral_700",
+    button_primary_text_color="white",
+    button_secondary_background_fill="*neutral_800",
+    button_secondary_background_fill_hover="*neutral_600",
+    button_secondary_text_color="white",
+    button_secondary_border_color="*neutral_800"
 )
 
 def upload_file_fn(file_list):
