@@ -12,6 +12,36 @@ OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434") + "/api
 uploaded_documents = {}  # { filename: text }
 system_prompt_base = "あなたは誠実で優秀なアシスタントです。提供された以下の参考資料の内容に基づいて、ユーザーの質問に正確に答えてください。\n\n[参考資料]\n"
 
+SYNC_DIR = "/app/data/documents"
+os.makedirs(SYNC_DIR, exist_ok=True)
+
+def sync_dir():
+    global uploaded_documents
+    new_docs = {}
+    for filename in os.listdir(SYNC_DIR):
+        filepath = os.path.join(SYNC_DIR, filename)
+        if not os.path.isfile(filepath):
+            continue
+            
+        try:
+            if filename.endswith(".txt"):
+                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                    new_docs[filename] = f.read()
+            elif filename.endswith(".pdf"):
+                with open(filepath, "rb") as f:
+                    reader = PdfReader(f)
+                    text = ""
+                    for i, page in enumerate(reader.pages):
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += f"[PDF_PAGE_{i+1}]\n{page_text}\n"
+                    new_docs[filename] = text
+        except Exception as e:
+            print(f"Error reading {filename}: {e}")
+            
+    uploaded_documents = new_docs
+    return list(uploaded_documents.keys())
+
 def get_combined_system_prompt():
     """アップロードされたすべての資料を結合してシステムプロンプトを生成"""
     context = ""
@@ -35,32 +65,52 @@ def upload_file():
             if filename == "":
                 continue
 
-            # 拡張子に応じてテキスト抽出
-            if filename.endswith(".txt"):
-                text = file.read().decode("utf-8", errors="ignore")
-            elif filename.endswith(".pdf"):
-                reader = PdfReader(file)
-                text = ""
-                for i, page in enumerate(reader.pages):
-                    page_text = page.extract_text()
-                    if page_text:
-                        # ハイライト参照用に、簡易的なページマーカーを埋め込む
-                        text += f"[PDF_PAGE_{i+1}]\n{page_text}\n"
-            else:
-                continue
-
-            # メモリに保存（資料の更新・追記）
-            uploaded_documents[filename] = text
+            filepath = os.path.join(SYNC_DIR, filename)
+            file.save(filepath)
             success_files.append(filename)
 
         if not success_files:
-            return jsonify({"error": "有効なファイルが読み込めませんでした"}), 400
+            return jsonify({"error": "有効なファイルが保存できませんでした"}), 400
+
+        # 保存後、ディレクトリ全体を同期
+        history = sync_dir()
 
         return jsonify({
-            "message": f"{len(success_files)}件のファイルを読み込み、システムプロンプトを更新しました。",
-            "history": list(uploaded_documents.keys())
+            "message": f"{len(success_files)}件のファイルを保存し、システムプロンプトを同期しました。",
+            "history": history
         })
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/sync", methods=["POST"])
+def sync_endpoint():
+    try:
+        history = sync_dir()
+        return jsonify({
+            "message": "ディレクトリの同期が完了しました。",
+            "history": history
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/delete", methods=["POST"])
+def delete_file():
+    data = request.json or {}
+    filename = data.get("filename")
+    if not filename:
+        return jsonify({"error": "ファイル名が指定されていません"}), 400
+        
+    filepath = os.path.join(SYNC_DIR, filename)
+    try:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            
+        history = sync_dir()
+        return jsonify({
+            "message": f"{filename} を削除しました。",
+            "history": history
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

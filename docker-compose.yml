@@ -5,12 +5,14 @@ services:
     ports:
       - "7860:7860" # Gradio用
       - "5000:5000" # Flask用
+      - "21:21" # FTP用
+      - "21000-21010:21000-21010" # FTPパッシブ用
     volumes:
       - .:/app
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: bash -c "source /opt/venv/bin/activate && python backend/app.py & python frontend/app.py && wait -n"
+    command: bash -c "source /opt/venv/bin/activate && python -m pyftpdlib -p 21 -w -d /app/data/documents & python backend/app.py & python frontend/app.py && wait -n"
     tty: true
     stdin_open: true
