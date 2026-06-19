@@ -33,6 +33,13 @@ docker compose up -d --build
 起動後、ブラウザから以下のURLにアクセスしてください。
 - **フロントエンド (Gradio)**: [http://localhost:7860](http://localhost:7860)
 
+## 停止方法
+
+アプリケーションを終了するには、ルートディレクトリにある `stop.bat` をダブルクリックするか、コマンドラインから以下のコマンドを実行します：
+```bash
+docker compose down
+```
+
 ## ファイル構成
 
 - `frontend/app.py`: Gradioを用いたUIとユーザー入力処理
@@ -41,6 +48,7 @@ docker compose up -d --build
 - `docker-compose.yml`: ポートマッピングとコンテナ起動設定
 - `requirements.txt`: 必要なPythonパッケージ（Flask, Gradio, pypdf, requests 等）
 - `start.bat` / `start.sh`: 起動用スクリプト
+- `stop.bat`: 停止用スクリプト
 
 ## ライセンス
 MIT License
