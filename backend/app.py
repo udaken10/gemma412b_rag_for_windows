@@ -1,4 +1,5 @@
 import os
+import re
 from flask import Flask, request, jsonify
 from pypdf import PdfReader
 import requests
@@ -8,9 +9,14 @@ app = Flask(__name__)
 # OLLAMAのURL（Docker環境変数から取得）
 OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/generate"
 
-# インメモリでドキュメント履歴とシステムプロンプト（コンテキスト）を保持
+# インメモリでドキュメント履歴とコンテキストを保持
 uploaded_documents = {}  # { filename: text }
-system_prompt_base = "あなたは誠実で優秀なアシスタントです。提供された以下の参考資料の内容に基づいて、ユーザーの質問に正確に答えてください。\n\n[参考資料]\n"
+
+def is_japanese(text):
+    if not text:
+        return False
+    # ひらがな、カタカナ、漢字が含まれているかを判定
+    return bool(re.search(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]', text))
 
 SYNC_DIR = "/app/data/documents"
 os.makedirs(SYNC_DIR, exist_ok=True)
@@ -25,8 +31,16 @@ def sync_dir():
             
         try:
             if filename.endswith(".txt"):
-                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                    new_docs[filename] = f.read()
+                for enc in ["utf-8", "shift_jis", "euc_jp"]:
+                    try:
+                        with open(filepath, "r", encoding=enc) as f:
+                            new_docs[filename] = f.read()
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                else:
+                    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                        new_docs[filename] = f.read()
             elif filename.endswith(".pdf"):
                 with open(filepath, "rb") as f:
                     reader = PdfReader(f)
@@ -42,11 +56,27 @@ def sync_dir():
     uploaded_documents = new_docs
     return list(uploaded_documents.keys())
 
-def get_combined_system_prompt():
-    """アップロードされたすべての資料を結合してシステムプロンプトを生成"""
+def get_combined_system_prompt(user_query):
+    """資料とユーザーの質問の言語に応じてシステムプロンプトを動的に生成"""
+    full_docs_text = "".join(uploaded_documents.values())
     context = ""
     for filename, text in uploaded_documents.items():
         context += f"--- 資料名: {filename} ---\n{text}\n\n"
+
+    # 資料が日本語であり、かつユーザーの入力も日本語である場合は、日本語特化のプロンプトにする
+    if is_japanese(user_query) and is_japanese(full_docs_text):
+        system_prompt_base = (
+            "あなたは誠実で優秀なアシスタントです。"
+            "提供された以下の日本語の参考資料の内容に基づいて、ユーザーの質問に日本語で正確に答えてください。\n\n[参考資料]\n"
+        )
+    else:
+        # それ以外の場合は多言語対応のフォールバックプロンプト
+        system_prompt_base = (
+            "You are a helpful and highly capable assistant. "
+            "Based on the provided reference materials, please accurately answer the user's question "
+            "in the same language as the question itself.\n\n[Reference Materials]\n"
+        )
+        
     return system_prompt_base + context
 
 @app.route("/upload", methods=["POST"])
@@ -127,7 +157,7 @@ def chat():
         return jsonify({"error": "クエリが空です"}), 400
 
     # 動的に更新されたシステムプロンプトを取得
-    full_system_prompt = get_combined_system_prompt()
+    full_system_prompt = get_combined_system_prompt(user_query)
 
     # Ollama (gemma4:12b) へのリクエストパラメータ構築
     # ※Gemmaのプロンプトフォーマットに合わせるため、systemとuserを結合
